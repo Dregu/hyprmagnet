@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 #include <re2/re2.h>
+#include <string>
 
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/config/ConfigManager.hpp>
@@ -24,60 +25,30 @@ APICALL EXPORT std::string PLUGIN_API_VERSION() {
 }
 
 void hkNotifyMotion(CSeatManager* thisptr, uint32_t time_msec, const Vector2D& local) {
-    static auto* const PMARGIN = (Hyprlang::INT* const*)HyprlandAPI::getConfigValue(PHANDLE, "plugin:magic-mouse-gaps:margin")->getDataStaticPtr();
-    static auto* const PSIZE   = (Hyprlang::INT* const*)HyprlandAPI::getConfigValue(PHANDLE, "plugin:magic-mouse-gaps:size")->getDataStaticPtr();
-    static auto* const PCLASS  = (Hyprlang::STRING const*)HyprlandAPI::getConfigValue(PHANDLE, "plugin:magic-mouse-gaps:class")->getDataStaticPtr();
-    static auto* const PEDGE   = (Hyprlang::STRING const*)HyprlandAPI::getConfigValue(PHANDLE, "plugin:magic-mouse-gaps:edge")->getDataStaticPtr();
+    static auto       PMARGIN = CConfigValue<Hyprlang::INT>("plugin:magic-mouse-gaps:margin");
+    static auto       PSIZE   = CConfigValue<Hyprlang::INT>("plugin:magic-mouse-gaps:size");
+    static auto       PCLASS  = CConfigValue<std::string>("plugin:magic-mouse-gaps:class");
+    static auto       PEDGE   = CConfigValue<std::string>("plugin:magic-mouse-gaps:edge");
 
-    Vector2D           newCoords = local;
-    Vector2D           surfacePos;
-    Vector2D           surfaceCoords;
-    bool               foundSurface = false;
-    SP<CLayerSurface>  pFoundLayerSurface;
-    const auto         PMONITOR = g_pInputManager->isLocked() && g_pCompositor->m_lastMonitor ? g_pCompositor->m_lastMonitor.lock() : g_pCompositor->getMonitorFromCursor();
+    Vector2D          newCoords = local;
+    Vector2D          surfacePos;
+    Vector2D          surfaceCoords;
+    bool              foundSurface = false;
+    SP<CLayerSurface> pFoundLayerSurface;
+    const auto        PMONITOR = g_pCompositor->getMonitorFromCursor();
 
-    if (PMONITOR && **PSIZE > 0) {
-        // forced above all
-        if (!g_pInputManager->m_exclusiveLSes.empty()) {
-            if (!foundSurface)
-                foundSurface = g_pCompositor->vectorToLayerSurface(newCoords, &g_pInputManager->m_exclusiveLSes, &surfaceCoords, &pFoundLayerSurface);
-
-            if (!foundSurface) {
-                foundSurface = (*g_pInputManager->m_exclusiveLSes.begin())->m_surface->resource();
-                surfacePos   = (*g_pInputManager->m_exclusiveLSes.begin())->m_realPosition->goal();
-            }
-        }
-
-        if (!foundSurface)
-            foundSurface = g_pCompositor->vectorToLayerPopupSurface(newCoords, PMONITOR, &surfaceCoords, &pFoundLayerSurface);
-
-        // overlays are above fullscreen
-        if (!foundSurface)
-            foundSurface = g_pCompositor->vectorToLayerSurface(newCoords, &PMONITOR->m_layerSurfaceLayers[3], &surfaceCoords, &pFoundLayerSurface);
-
-        // also IME popups
-        if (!foundSurface) {
-            auto popup = g_pInputManager->m_relay.popupFromCoords(newCoords);
-            if (popup) {
-                foundSurface = popup->getSurface();
-                surfacePos   = popup->globalBox().pos();
-            }
-        }
-
-        // also top layers
-        if (!foundSurface)
-            foundSurface = g_pCompositor->vectorToLayerSurface(newCoords, &PMONITOR->m_layerSurfaceLayers[2], &surfaceCoords, &pFoundLayerSurface);
-
+    if (std::string{*PCLASS} != STRVAL_EMPTY && !(*PCLASS).empty() && *PSIZE > 0 && PMONITOR && PMONITOR == g_pCompositor->m_lastMonitor && g_pCompositor->m_lastWindow &&
+        !g_pCompositor->m_lastWindow->m_class.empty()) {
         if (!foundSurface && !g_pCompositor->m_lastWindow.expired() && RE2::FullMatch(g_pCompositor->m_lastWindow->m_class, *PCLASS)) {
             const auto& winSize = g_pCompositor->m_lastWindow->m_realSize->goal();
-            if (strstr(*PEDGE, "l") && local.x < 0 && local.x >= -**PSIZE)
-                newCoords.x = **PMARGIN;
-            else if (strstr(*PEDGE, "r") && local.x > winSize.x && local.x <= winSize.x + **PSIZE)
-                newCoords.x = winSize.x - **PMARGIN;
-            if (strstr(*PEDGE, "t") && local.y < 0 && local.y >= -**PSIZE)
-                newCoords.y = **PMARGIN;
-            else if (strstr(*PEDGE, "b") && local.y > winSize.y && local.y <= winSize.y + **PSIZE)
-                newCoords.y = winSize.y - **PMARGIN;
+            if ((*PEDGE).contains("l") && local.x < 0 && local.x >= -*PSIZE)
+                newCoords.x = *PMARGIN;
+            else if ((*PEDGE).contains("r") && local.x > winSize.x && local.x <= winSize.x + *PSIZE)
+                newCoords.x = winSize.x - *PMARGIN;
+            if ((*PEDGE).contains("t") && local.y < 0 && local.y >= -*PSIZE)
+                newCoords.y = *PMARGIN;
+            else if ((*PEDGE).contains("b") && local.y > winSize.y && local.y <= winSize.y + *PSIZE)
+                newCoords.y = winSize.y - *PMARGIN;
         }
     }
 
@@ -86,16 +57,6 @@ void hkNotifyMotion(CSeatManager* thisptr, uint32_t time_msec, const Vector2D& l
 
 APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     PHANDLE = handle;
-
-    /*const std::string HASH = __hyprland_api_get_hash();
-
-  if (HASH != GIT_COMMIT_HASH)
-  {
-      HyprlandAPI::addNotification(PHANDLE, "[magic-mouse-gaps] Failure in
-  initialization: Version mismatch (headers ver is not equal to running hyprland
-  ver)", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000); throw
-  std::runtime_error("[magic-mouse-gaps] Version mismatch");
-  }*/
 
     HyprlandAPI::addConfigValue(PHANDLE, "plugin:magic-mouse-gaps:margin", Hyprlang::INT{0});
     HyprlandAPI::addConfigValue(PHANDLE, "plugin:magic-mouse-gaps:size", Hyprlang::INT{32});
