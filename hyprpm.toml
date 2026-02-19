@@ -1,10 +1,10 @@
 [repository]
-name = "magic-mouse-gaps"
+name = "hyprmagnet"
 authors = ["Dregu"]
 #commit_pins = []
 
-[magic-mouse-gaps]
-description = "Move mouse events from just outside a window (i.e. on gaps and borders) to just inside a nearby window, to click browser tabs without having to aim."
+[hyprmagnet]
+description = "Move mouse events from just outside a tiled window (i.e. from outer gaps and borders) to just inside the window, to click browser tabs and scrollbars without having to aim inside the window."
 authors = ["Dregu"]
-output = "libmagic-mouse-gaps.so"
+output = "libhyprmagnet.so"
 build = ["make"]

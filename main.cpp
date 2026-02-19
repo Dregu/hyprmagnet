@@ -1,94 +1,87 @@
-#define WLR_USE_UNSTABLE
 
 #include <unistd.h>
-#include <re2/re2.h>
 #include <string>
 
+#include <hyprutils/math/Vector2D.hpp>
+
 #include <hyprland/src/Compositor.hpp>
-#include <hyprland/src/config/ConfigManager.hpp>
-#include <hyprland/src/desktop/Window.hpp>
-#include <hyprland/src/managers/SeatManager.hpp>
+#include <hyprland/src/managers/PointerManager.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
+#include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
-#include <hyprland/src/desktop/LayerSurface.hpp>
-#include "hyprland/src/helpers/memory/Memory.hpp"
 
-inline HANDLE PHANDLE = nullptr;
+inline HANDLE         PHANDLE = nullptr;
 
-// Methods
-inline CFunctionHook* g_pMouseMotionHook = nullptr;
-typedef void (*origMotion)(CSeatManager*, uint32_t, const Vector2D&);
+inline CFunctionHook* g_pMouseHook = nullptr;
+typedef void (*origMotion)(CInputManager*, uint32_t, bool, bool, std::optional<Vector2D>);
 
-// Do NOT change this function.
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
     return HYPRLAND_API_VERSION;
 }
 
-void hkNotifyMotion(CSeatManager* thisptr, uint32_t time_msec, const Vector2D& local) {
-    static auto       PMARGIN = CConfigValue<Hyprlang::INT>("plugin:magic-mouse-gaps:margin");
-    static auto       PSIZE   = CConfigValue<Hyprlang::INT>("plugin:magic-mouse-gaps:size");
-    static auto       PCLASS  = CConfigValue<std::string>("plugin:magic-mouse-gaps:class");
-    static auto       PEDGE   = CConfigValue<std::string>("plugin:magic-mouse-gaps:edge");
-
-    Vector2D          newCoords = local;
-    Vector2D          surfacePos;
-    Vector2D          surfaceCoords;
-    bool              foundSurface = false;
-    SP<CLayerSurface> pFoundLayerSurface;
-    const auto        PMONITOR = g_pCompositor->getMonitorFromCursor();
-
-    if (std::string{*PCLASS} != STRVAL_EMPTY && !(*PCLASS).empty() && *PSIZE > 0 && PMONITOR && PMONITOR == g_pCompositor->m_lastMonitor && g_pCompositor->m_lastWindow &&
-        !g_pCompositor->m_lastWindow->m_class.empty()) {
-        if (!foundSurface && !g_pCompositor->m_lastWindow.expired() && RE2::FullMatch(g_pCompositor->m_lastWindow->m_class, *PCLASS)) {
-            const auto& winSize = g_pCompositor->m_lastWindow->m_realSize->goal();
-            if ((*PEDGE).contains("l") && local.x < 0 && local.x >= -*PSIZE)
-                newCoords.x = *PMARGIN;
-            else if ((*PEDGE).contains("r") && local.x > winSize.x && local.x <= winSize.x + *PSIZE)
-                newCoords.x = winSize.x - *PMARGIN;
-            if ((*PEDGE).contains("t") && local.y < 0 && local.y >= -*PSIZE)
-                newCoords.y = *PMARGIN;
-            else if ((*PEDGE).contains("b") && local.y > winSize.y && local.y <= winSize.y + *PSIZE)
-                newCoords.y = winSize.y - *PMARGIN;
+void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, std::optional<Vector2D> overridePos) {
+    if (g_pInputManager->m_lastFocusOnLS) {
+        (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
+        return;
+    }
+    static auto PEDGE  = CConfigValue<std::string>("plugin:magnet:edge");
+    static auto PPAD   = CConfigValue<Hyprlang::INT>("plugin:magnet:pad");
+    static auto PGAPS  = CConfigValue<Hyprlang::CUSTOMTYPE>("general:gaps_out");
+    const auto* GAPS   = sc<CCssGapData*>(PGAPS.ptr()->getData());
+    const auto  PAD    = -sc<double>(*PPAD);
+    const auto  COORDS = g_pPointerManager->position();
+    const auto  WIN    = Desktop::focusState()->window();
+    const auto  NEWWIN = g_pCompositor->vectorToWindowUnified(COORDS, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+    if (WIN && (!NEWWIN || WIN == NEWWIN) && WIN->m_ruleApplicator->m_tagKeeper.isTagged("magnet")) {
+        auto BOX    = WIN->getWindowMainSurfaceBox();
+        auto GAPBOX = BOX.copy();
+        GAPBOX.addExtents(SBoxExtents{Vector2D{(int)GAPS->m_left, (int)GAPS->m_top}, Vector2D{(int)GAPS->m_right, (int)GAPS->m_bottom}});
+        if (GAPBOX.containsPoint(COORDS) && ((*PEDGE).contains("l") && COORDS.x <= BOX.x) || ((*PEDGE).contains("r") && COORDS.x >= BOX.x + BOX.w) ||
+            ((*PEDGE).contains("t") && COORDS.y <= BOX.y) || ((*PEDGE).contains("b") && COORDS.y >= BOX.y + BOX.h)) {
+            (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, BOX.expand(PAD).closestPoint(COORDS));
+            return;
         }
     }
-
-    (*(origMotion)g_pMouseMotionHook->m_original)(thisptr, time_msec, newCoords);
+    (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
 }
 
 APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     PHANDLE = handle;
 
-    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magic-mouse-gaps:margin", Hyprlang::INT{0});
-    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magic-mouse-gaps:size", Hyprlang::INT{32});
-    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magic-mouse-gaps:class", Hyprlang::STRING{"firefox"});
-    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magic-mouse-gaps:edge", Hyprlang::STRING{"t"});
+    const std::string COMPOSITOR_HASH = __hyprland_api_get_hash();
+    const std::string CLIENT_HASH     = __hyprland_api_get_client_hash();
 
-    auto FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "sendPointerMotion");
+    if (COMPOSITOR_HASH != CLIENT_HASH) {
+        HyprlandAPI::addNotification(PHANDLE, "[hyprmagnet] Mismatched headers! Can't proceed.", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
+        throw std::runtime_error("[hyprmagnet] Version mismatch");
+    }
+
+    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magnet:pad", Hyprlang::INT{0});
+    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magnet:edge", Hyprlang::STRING{"t"});
+
+    auto FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "mouseMoveUnified");
     for (auto& fn : FNS) {
-        if (!fn.demangled.contains("CSeatManager"))
+        if (!fn.demangled.contains("CInputManager"))
             continue;
 
-        g_pMouseMotionHook = HyprlandAPI::createFunctionHook(PHANDLE, fn.address, (void*)::hkNotifyMotion);
+        g_pMouseHook = HyprlandAPI::createFunctionHook(PHANDLE, fn.address, (void*)::hkMouse);
         break;
     }
 
-    bool success = g_pMouseMotionHook;
+    bool success = g_pMouseHook;
     if (!success) {
-        HyprlandAPI::addNotification(PHANDLE, "[magic-mouse-gaps] Hook init failed", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
-        throw std::runtime_error("[magic-mouse-gaps] Hook init failed");
+        HyprlandAPI::addNotification(PHANDLE, "[hyprmagnet] Hook init failed", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
+        throw std::runtime_error("[hyprmagnet] Hook init failed");
     }
 
-    success = success && g_pMouseMotionHook->hook();
+    success = success && g_pMouseHook->hook();
 
     if (!success) {
-        HyprlandAPI::addNotification(PHANDLE, "[magic-mouse-gaps] Hook failed", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
-        throw std::runtime_error("[magic-mouse-gaps] Hook failed");
+        HyprlandAPI::addNotification(PHANDLE, "[hyprmagnet] Hook failed", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
+        throw std::runtime_error("[hyprmagnet] Hook failed");
     }
 
-    return {"magic-mouse-gaps",
-            "A plugin to move mouse events from gaps to nearby matching window "
-            "(use firefox tabs from gaps)",
-            "Dregu", "1.0"};
+    return {"hyprmagnet", "Move mouse events from gaps to nearby windows", "Dregu", "0.2.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
