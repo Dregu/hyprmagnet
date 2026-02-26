@@ -9,6 +9,8 @@
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
+#include <hyprland/src/config/ConfigManager.hpp>
+#include <hyprland/src/layout/target/Target.hpp>
 
 inline HANDLE         PHANDLE = nullptr;
 
@@ -24,20 +26,33 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
         (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
         return;
     }
-    static auto PEDGE  = CConfigValue<std::string>("plugin:magnet:edge");
-    static auto PPAD   = CConfigValue<Hyprlang::INT>("plugin:magnet:pad");
-    static auto PGAPS  = CConfigValue<Hyprlang::CUSTOMTYPE>("general:gaps_out");
-    const auto* GAPS   = sc<CCssGapData*>(PGAPS.ptr()->getData());
-    const auto  PAD    = -sc<double>(*PPAD);
-    const auto  COORDS = g_pPointerManager->position();
-    const auto  WIN    = Desktop::focusState()->window();
-    const auto  NEWWIN = g_pCompositor->vectorToWindowUnified(COORDS, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+    static auto PEDGE    = CConfigValue<std::string>("plugin:magnet:edge");
+    static auto PPAD     = CConfigValue<Hyprlang::INT>("plugin:magnet:pad");
+    static auto PGAPSOUT = CConfigValue<Hyprlang::CUSTOMTYPE>("general:gaps_out");
+    static auto PBORDER  = CConfigValue<Hyprlang::INT>("general:border_size");
+
+    const auto* GAPSOUT = sc<CCssGapData*>(PGAPSOUT.ptr()->getData());
+    const auto  PAD     = -sc<double>(*PPAD);
+    const auto  COORDS  = g_pPointerManager->position();
+    const auto  WIN     = Desktop::focusState()->window();
+    const auto  NEWWIN  = g_pCompositor->vectorToWindowUnified(COORDS, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+
     if (WIN && (!NEWWIN || WIN == NEWWIN) && WIN->m_ruleApplicator->m_tagKeeper.isTagged("magnet")) {
-        auto BOX    = WIN->getWindowMainSurfaceBox();
-        auto GAPBOX = BOX.copy();
-        GAPBOX.addExtents(SBoxExtents{Vector2D{(int)GAPS->m_left, (int)GAPS->m_top}, Vector2D{(int)GAPS->m_right, (int)GAPS->m_bottom}});
-        if (GAPBOX.containsPoint(COORDS) && ((*PEDGE).contains("l") && COORDS.x <= BOX.x) || ((*PEDGE).contains("r") && COORDS.x >= BOX.x + BOX.w) ||
-            ((*PEDGE).contains("t") && COORDS.y <= BOX.y) || ((*PEDGE).contains("b") && COORDS.y >= BOX.y + BOX.h)) {
+        const auto WORKSPACERULE = g_pConfigManager->getWorkspaceRuleFor(WIN->layoutTarget()->workspace());
+        auto       GAPS          = WORKSPACERULE.gapsOut.value_or(*GAPSOUT);
+        auto       BOX           = WIN->getWindowMainSurfaceBox();
+        auto       GAPBOX        = BOX.copy();
+        auto       LEFT          = (*PEDGE).contains("l");
+        auto       RIGHT         = (*PEDGE).contains("r");
+        auto       TOP           = (*PEDGE).contains("t");
+        auto       BOTTOM        = (*PEDGE).contains("b");
+        GAPBOX.addExtents(SBoxExtents{
+            Vector2D{LEFT ? (int)GAPS.m_left : 0, TOP ? (int)GAPS.m_top : 0},
+            Vector2D{RIGHT ? (int)GAPS.m_right : 0, BOTTOM ? (int)GAPS.m_bottom : 0},
+        });
+        GAPBOX.expand(*PBORDER);
+        if (GAPBOX.containsPoint(COORDS) &&
+            ((LEFT && COORDS.x <= BOX.x) || (RIGHT && COORDS.x >= BOX.x + BOX.w) || (TOP && COORDS.y <= BOX.y) || (BOTTOM && COORDS.y >= BOX.y + BOX.h))) {
             (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, BOX.expand(PAD).closestPoint(COORDS));
             return;
         }
