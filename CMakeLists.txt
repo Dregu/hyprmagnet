@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.27)
 
 project(hyprmagnet
     DESCRIPTION "hyprmagnet plugin for Hyprland"
-    VERSION 0.2.0
+    VERSION 0.3.0
 )
 
 set(CMAKE_CXX_STANDARD 23)
