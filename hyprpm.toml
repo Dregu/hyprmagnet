@@ -1,7 +1,9 @@
 [repository]
 name = "hyprmagnet"
 authors = ["Dregu"]
-#commit_pins = []
+commit_pins = [
+    ["59f9f2688ac508a0584d1462151195a6c4992f99", "23dd84cb292a1094b3ba4a66a539678158058614"], # 0.54.2
+]
 
 [hyprmagnet]
 description = "Move mouse events from just outside a tiled window (i.e. from outer gaps and borders) to just inside the window, to click browser tabs and scrollbars without having to aim inside the window."
