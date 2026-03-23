@@ -139,7 +139,9 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
         GAPBOX.expand(BORDER);
         if (GAPBOX.containsPoint(COORDS) &&
             ((LEFT && COORDS.x <= BOX.x) || (RIGHT && COORDS.x >= BOX.x + BOX.w) || (TOP && COORDS.y <= BOX.y) || (BOTTOM && COORDS.y >= BOX.y + BOX.h))) {
-            (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, BOX.expand(PAD).closestPoint(COORDS));
+            g_pPointerManager->warpTo(BOX.expand(PAD).closestPoint(COORDS));
+            (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
+            g_pPointerManager->warpTo(COORDS);
             return;
         }
     }
