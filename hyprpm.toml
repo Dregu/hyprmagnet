@@ -3,6 +3,7 @@ name = "hyprmagnet"
 authors = ["Dregu"]
 commit_pins = [
     ["59f9f2688ac508a0584d1462151195a6c4992f99", "23dd84cb292a1094b3ba4a66a539678158058614"], # 0.54.2
+    ["521ece463c4a9d3d128670688a34756805a4328f", "23dd84cb292a1094b3ba4a66a539678158058614"], # 0.54.3
 ]
 
 [hyprmagnet]
