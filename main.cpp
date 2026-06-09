@@ -1,5 +1,3 @@
-
-#include <hyprland/src/helpers/math/Direction.hpp>
 #include <unistd.h>
 #include <string>
 
@@ -13,7 +11,12 @@
 #include <hyprland/src/config/legacy/ConfigManager.hpp>
 #include <hyprland/src/config/shared/workspace/WorkspaceRuleManager.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
-#include <hyprland/src/helpers/Monitor.hpp>
+#include <hyprland/src/state/MonitorState.hpp>
+#include <hyprland/src/output/Monitor.hpp>
+#include <hyprland/src/config/values/types/IntValue.hpp>
+#include <hyprland/src/config/values/types/StringValue.hpp>
+#include <hyprland/src/config/shared/complex/ComplexDataType.hpp>
+#include <hyprland/src/helpers/math/Direction.hpp>
 
 inline HANDLE         PHANDLE = nullptr;
 
@@ -31,7 +34,7 @@ PHLMONITOR getMonitorAcrossGap(Math::eDirection dir, bool inter) {
     const auto COORDS   = g_pPointerManager->position();
     float      bestDist = __FLT_MAX__;
     PHLMONITOR bestMon;
-    for (auto& mon : g_pCompositor->m_monitors) {
+    for (auto& mon : State::monitorState()->monitors()) {
         const auto POINT = mon->logicalBox().closestPoint(COORDS);
         const auto DIST  = (dir == Math::DIRECTION_LEFT || dir == Math::DIRECTION_RIGHT) ? abs(COORDS.y - POINT.y) : abs(COORDS.x - POINT.x);
         if (DIST < bestDist) {
@@ -54,23 +57,23 @@ PHLMONITOR getMonitorAcrossGap(Math::eDirection dir, bool inter) {
 }
 
 void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, std::optional<Vector2D> overridePos) {
-    static auto       PPAD   = HyprlandAPI::getConfigValue(PHANDLE, "plugin:magnet:pad");
-    static auto       PDELAY = HyprlandAPI::getConfigValue(PHANDLE, "plugin:magnet:delay");
-    static auto       PEDGE  = HyprlandAPI::getConfigValue(PHANDLE, "plugin:magnet:edge");
-    static auto       PWARP  = HyprlandAPI::getConfigValue(PHANDLE, "plugin:magnet:warp");
+    static auto       PPAD   = CConfigValue<Config::INTEGER>("plugin:magnet:pad");
+    static auto       PDELAY = CConfigValue<Config::INTEGER>("plugin:magnet:delay");
+    static auto       PEDGE  = CConfigValue<Config::STRING>("plugin:magnet:edge");
+    static auto       PWARP  = CConfigValue<Config::STRING>("plugin:magnet:warp");
 
-    static auto       PBORDER  = HyprlandAPI::getConfigValue(PHANDLE, "general:border_size");
-    static auto       PGAPSOUT = CConfigValue<Hyprlang::CUSTOMTYPE>("general:gaps_out");
-    static auto       PHOTSPOT = HyprlandAPI::getConfigValue(PHANDLE, "cursor:hotspot_padding");
+    static auto       PBORDER  = CConfigValue<Config::INTEGER>("general:border_size");
+    static auto       PGAPSOUT = CConfigValue<Config::IComplexConfigValue>("general:gaps_out");
+    static auto       PHOTSPOT = CConfigValue<Config::INTEGER>("cursor:hotspot_padding");
 
-    const auto        PAD   = -sc<double>(std::any_cast<Hyprlang::INT>(PPAD->getValue()));
-    const auto        DELAY = std::any_cast<Hyprlang::INT>(PDELAY->getValue());
-    const std::string EDGE{std::any_cast<Hyprlang::STRING>(PEDGE->getValue())};
-    const std::string WARP{std::any_cast<Hyprlang::STRING>(PWARP->getValue())};
+    const auto        PAD   = -sc<double>(*PPAD);
+    const auto        DELAY = *PDELAY;
+    const std::string EDGE{*PEDGE};
+    const std::string WARP{*PWARP};
 
-    const auto        BORDER  = std::any_cast<Hyprlang::INT>(PBORDER->getValue());
-    const auto*       GAPSOUT = sc<Config::CCssGapData*>(PGAPSOUT.ptr()->getData());
-    const auto        HOTSPOT = std::any_cast<Hyprlang::INT>(PHOTSPOT->getValue());
+    const auto        BORDER  = *PBORDER;
+    const auto*       GAPSOUT = sc<Config::CCssGapData*>(PGAPSOUT.ptr());
+    const auto        HOTSPOT = *PHOTSPOT;
 
     const auto        COORDS        = g_pPointerManager->position();
     const auto        COORDSFLOORED = COORDS.floor();
@@ -156,13 +159,13 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
 
     if (COMPOSITOR_HASH != CLIENT_HASH) {
         HyprlandAPI::addNotification(PHANDLE, "[hyprmagnet] Mismatched headers! Can't proceed.", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
-        throw std::runtime_error("[hyprmagnet] Version mismatch");
+        throw std::runtime_error("[hyprmagnet] Version mismatch! COMPOST:" + COMPOSITOR_HASH + ", PLUGIN:" + CLIENT_HASH);
     }
 
-    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magnet:pad", Hyprlang::INT{0});
-    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magnet:delay", Hyprlang::INT{500});
-    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magnet:edge", Hyprlang::STRING{"t"});
-    HyprlandAPI::addConfigValue(PHANDLE, "plugin:magnet:warp", Hyprlang::STRING{""});
+    HyprlandAPI::addConfigValueV2(PHANDLE, makeShared<Config::Values::CIntValue>("plugin:magnet:pad", "padding", 0));
+    HyprlandAPI::addConfigValueV2(PHANDLE, makeShared<Config::Values::CIntValue>("plugin:magnet:delay", "delay", 500));
+    HyprlandAPI::addConfigValueV2(PHANDLE, makeShared<Config::Values::CStringValue>("plugin:magnet:edge", "edge", "t"));
+    HyprlandAPI::addConfigValueV2(PHANDLE, makeShared<Config::Values::CStringValue>("plugin:magnet:warp", "warp", ""));
 
     auto FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "mouseMoveUnified");
     for (auto& fn : FNS) {
@@ -186,7 +189,7 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
         throw std::runtime_error("[hyprmagnet] Hook failed");
     }
 
-    return {"hyprmagnet", "Move mouse events from gaps to nearby windows and warp between monitors", "Dregu", "0.3.0"};
+    return {"hyprmagnet", "Move mouse events from gaps to nearby windows and warp between monitors", "Dregu", "0.55.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
