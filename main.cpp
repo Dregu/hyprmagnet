@@ -100,7 +100,7 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
                 const bool INTER = WARP.contains('i');
                 for (char c : WARP) {
                     if (c == 'i') {
-                        if (auto NEWMON = g_pCompositor->getMonitorInDirection(DIR); NEWMON) {
+                        if (auto NEWMON = State::monitorState()->query().relativeTo(Desktop::focusState()->monitor()).inDirection(DIR).run(); NEWMON) {
                             auto NEWPOS = NEWMON->logicalBox().closestPoint(COORDS);
                             Log::logger->log(Log::DEBUG, "[hyprmagnet] INT WARP TO {} {}", NEWMON->m_name, NEWPOS);
                             g_warped.reset();
