@@ -79,7 +79,7 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
     const auto        COORDSFLOORED = COORDS.floor();
     const auto        MON           = Desktop::focusState()->monitor();
     const auto        WIN           = Desktop::focusState()->window();
-    const auto        NEWWIN        = g_pCompositor->vectorToWindowUnified(COORDS, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
+    const auto        NEWWIN = Desktop::viewState()->hitTest().windowAt(COORDS, Desktop::View::RESERVED_EXTENTS | Desktop::View::INPUT_EXTENTS | Desktop::View::ALLOW_FLOATING);
 
     if (MON && g_warped.getMillis() > DELAY && !WARP.empty()) {
         const auto LOCAL  = COORDSFLOORED - MON->m_position;
