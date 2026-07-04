@@ -4,7 +4,7 @@
 #include <hyprutils/math/Vector2D.hpp>
 
 #include <hyprland/src/Compositor.hpp>
-#include <hyprland/src/managers/PointerManager.hpp>
+#include <hyprland/src/pointer/PointerManager.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
@@ -31,7 +31,7 @@ CTimer     g_warped;
 
 PHLMONITOR getMonitorAcrossGap(Math::eDirection dir, bool inter) {
     const auto ACTIVE   = Desktop::focusState()->monitor();
-    const auto COORDS   = g_pPointerManager->position();
+    const auto COORDS   = Pointer::mgr()->position();
     float      bestDist = __FLT_MAX__;
     PHLMONITOR bestMon;
     for (auto& mon : State::monitorState()->monitors()) {
@@ -75,7 +75,7 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
     const auto*       GAPSOUT = sc<Config::CCssGapData*>(PGAPSOUT.ptr());
     const auto        HOTSPOT = *PHOTSPOT;
 
-    const auto        COORDS        = g_pPointerManager->position();
+    const auto        COORDS        = Pointer::mgr()->position();
     const auto        COORDSFLOORED = COORDS.floor();
     const auto        MON           = Desktop::focusState()->monitor();
     const auto        WIN           = Desktop::focusState()->window();
@@ -104,7 +104,7 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
                             auto NEWPOS = NEWMON->logicalBox().closestPoint(COORDS);
                             Log::logger->log(Log::DEBUG, "[hyprmagnet] INT WARP TO {} {}", NEWMON->m_name, NEWPOS);
                             g_warped.reset();
-                            g_pPointerManager->warpTo(NEWPOS);
+                            Pointer::mgr()->warpTo(NEWPOS);
                             return;
                         }
                     } else if (c == 'g') {
@@ -112,7 +112,7 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
                             auto NEWPOS = NEWMON->logicalBox().closestPoint(COORDS);
                             Log::logger->log(Log::DEBUG, "[hyprmagnet] GAP WARP TO {} {}", NEWMON->m_name, NEWPOS);
                             g_warped.reset();
-                            g_pPointerManager->warpTo(NEWPOS);
+                            Pointer::mgr()->warpTo(NEWPOS);
                             return;
                         }
                     }
@@ -142,9 +142,9 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
         GAPBOX.expand(BORDER);
         if (GAPBOX.containsPoint(COORDS) &&
             ((LEFT && COORDS.x <= BOX.x) || (RIGHT && COORDS.x >= BOX.x + BOX.w) || (TOP && COORDS.y <= BOX.y) || (BOTTOM && COORDS.y >= BOX.y + BOX.h))) {
-            g_pPointerManager->warpTo(BOX.expand(PAD).closestPoint(COORDS));
+            Pointer::mgr()->warpTo(BOX.expand(PAD).closestPoint(COORDS));
             (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
-            g_pPointerManager->warpTo(COORDS);
+            Pointer::mgr()->warpTo(COORDS);
             return;
         }
     }
