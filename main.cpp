@@ -8,7 +8,6 @@
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
-#include <hyprland/src/config/legacy/ConfigManager.hpp>
 #include <hyprland/src/config/shared/workspace/WorkspaceRuleManager.hpp>
 #include <hyprland/src/layout/target/Target.hpp>
 #include <hyprland/src/state/MonitorState.hpp>
