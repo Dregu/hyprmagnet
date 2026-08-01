@@ -2,8 +2,24 @@
 
 Hyprland plugin with some smart mouse hooks, for Hyprland 0.53+.
 
-- move mouse events from just outside a tiled window (i.e. from outer gaps and borders) to just inside the window, to click browser tabs and scrollbars without having to aim inside the window
-- smarter warp to nearby monitors when bonking non-intersecting monitor edges
+1. move mouse events from just outside a tiled window (i.e. from outer gaps and borders) to just inside the window, to click browser tabs and scrollbars without having to aim inside the window
+2. smarter warp to nearby monitors when bonking non-intersecting monitor edges
+
+```
+┌─────────────────────────────────────────────────────────┬──────────────────────────────┐
+│            1. you can click up here (the gap)           │                              │
+│    ┌───────────┬───────────┬───────────┬───────────┐    │                              │
+│    │  browser  │  tab      │ another   │ one       │    │  even if your other monitor  │
+│    ├───────────┴───────────┴───────────┴───────────┤    │     is way up over there     │
+│    │     ^ even though the tabs are down here      │    │                              │
+│    │                                               │    │→ to get here                 │
+│    │                                               │    ├──────────────────────────────┘
+│    │                                               │    │
+│    │                                               │    │
+│    └───────────────────────────────────────────────┘    │
+│                             2. or move your mouse here →│
+└─────────────────────────────────────────────────────────┘
+```
 
 ```lua
 -- Enabled per window with dynamic tag magnet
