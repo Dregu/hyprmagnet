@@ -16,6 +16,7 @@
 #include <hyprland/src/config/values/types/StringValue.hpp>
 #include <hyprland/src/config/shared/complex/ComplexDataType.hpp>
 #include <hyprland/src/helpers/math/Direction.hpp>
+#include <hyprland/src/overview/Overview.hpp>
 
 inline HANDLE         PHANDLE = nullptr;
 
@@ -56,6 +57,11 @@ PHLMONITOR getMonitorAcrossGap(Math::eDirection dir, bool inter) {
 }
 
 void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, std::optional<Vector2D> overridePos) {
+    if (Overview::overview()->isOpen()) {
+        (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
+        return;
+    }
+
     static auto       PPAD   = CConfigValue<Config::INTEGER>("plugin:magnet:pad");
     static auto       PDELAY = CConfigValue<Config::INTEGER>("plugin:magnet:delay");
     static auto       PEDGE  = CConfigValue<Config::STRING>("plugin:magnet:edge");
