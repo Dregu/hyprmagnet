@@ -16,7 +16,7 @@
 #include <hyprland/src/config/values/types/StringValue.hpp>
 #include <hyprland/src/config/shared/complex/ComplexDataType.hpp>
 #include <hyprland/src/helpers/math/Direction.hpp>
-#include <hyprland/src/overview/Overview.hpp>
+//#include <hyprland/src/overview/Overview.hpp>
 
 inline HANDLE         PHANDLE = nullptr;
 
@@ -57,10 +57,10 @@ PHLMONITOR getMonitorAcrossGap(Math::eDirection dir, bool inter) {
 }
 
 void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, std::optional<Vector2D> overridePos) {
-    if (Overview::overview()->isOpen()) {
+    /*if (Overview::overview()->isOpen()) {
         (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
         return;
-    }
+    }*/
 
     static auto       PPAD   = CConfigValue<Config::INTEGER>("plugin:magnet:pad");
     static auto       PDELAY = CConfigValue<Config::INTEGER>("plugin:magnet:delay");
@@ -107,7 +107,6 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
                     if (c == 'i') {
                         if (auto NEWMON = State::monitorState()->query().relativeTo(Desktop::focusState()->monitor()).inDirection(DIR).run(); NEWMON) {
                             auto NEWPOS = NEWMON->logicalBox().closestPoint(COORDS);
-                            Log::logger->log(Log::DEBUG, "[hyprmagnet] INT WARP TO {} {}", NEWMON->m_name, NEWPOS);
                             g_warped.reset();
                             Pointer::mgr()->warpTo(NEWPOS);
                             return;
@@ -115,7 +114,6 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
                     } else if (c == 'g') {
                         if (auto NEWMON = getMonitorAcrossGap(DIR, INTER); NEWMON) {
                             auto NEWPOS = NEWMON->logicalBox().closestPoint(COORDS);
-                            Log::logger->log(Log::DEBUG, "[hyprmagnet] GAP WARP TO {} {}", NEWMON->m_name, NEWPOS);
                             g_warped.reset();
                             Pointer::mgr()->warpTo(NEWPOS);
                             return;
