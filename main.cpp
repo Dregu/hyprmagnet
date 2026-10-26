@@ -5,6 +5,7 @@
 
 #include <hyprland/src/Compositor.hpp>
 #include <hyprland/src/pointer/PointerManager.hpp>
+#include <hyprland/src/pointer/PointerTransformer.hpp>
 #include <hyprland/src/managers/input/InputManager.hpp>
 #include <hyprland/src/desktop/state/FocusState.hpp>
 #include <hyprland/src/plugins/PluginAPI.hpp>
@@ -18,18 +19,16 @@
 #include <hyprland/src/helpers/math/Direction.hpp>
 //#include <hyprland/src/overview/Overview.hpp>
 
-inline HANDLE         PHANDLE = nullptr;
-
-inline CFunctionHook* g_pMouseHook = nullptr;
-typedef void (*origMotion)(CInputManager*, uint32_t, bool, bool, std::optional<Vector2D>);
+inline HANDLE  PHANDLE = nullptr;
 
 APICALL EXPORT std::string PLUGIN_API_VERSION() {
     return HYPRLAND_API_VERSION;
 }
 
-CTimer     g_warped;
+CTimer                           g_warped;
+SP<Pointer::CPointerTransformer> g_pointerTransformer;
 
-PHLMONITOR getMonitorAcrossGap(Math::eDirection dir, bool inter) {
+PHLMONITOR                       getMonitorAcrossGap(Math::eDirection dir, bool inter) {
     const auto ACTIVE   = Desktop::focusState()->monitor();
     const auto COORDS   = Pointer::mgr()->position();
     float      bestDist = __FLT_MAX__;
@@ -56,11 +55,9 @@ PHLMONITOR getMonitorAcrossGap(Math::eDirection dir, bool inter) {
     return bestMon;
 }
 
-void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, std::optional<Vector2D> overridePos) {
-    /*if (Overview::overview()->isOpen()) {
-        (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
-        return;
-    }*/
+void transformPointer(Vector2D& pos) {
+    /*if (Overview::overview()->isOpen())
+        return;*/
 
     static auto       PPAD   = CConfigValue<Config::INTEGER>("plugin:magnet:pad");
     static auto       PDELAY = CConfigValue<Config::INTEGER>("plugin:magnet:delay");
@@ -80,7 +77,7 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
     const auto*       GAPSOUT = sc<Config::CCssGapData*>(PGAPSOUT.ptr());
     const auto        HOTSPOT = *PHOTSPOT;
 
-    const auto        COORDS        = Pointer::mgr()->position();
+    const auto        COORDS        = pos;
     const auto        COORDSFLOORED = COORDS.floor();
     const auto        MON           = Desktop::focusState()->monitor();
     const auto        WIN           = Desktop::focusState()->window();
@@ -124,10 +121,8 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
         }
     }
 
-    if (g_pInputManager->m_lastFocusOnLS) {
-        (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
+    if (g_pInputManager->m_lastFocusOnLS)
         return;
-    }
 
     if (WIN && (!NEWWIN || WIN == NEWWIN) && WIN->m_ruleApplicator->m_tagKeeper.isTagged("magnet")) {
         const auto WSRULE = Config::workspaceRuleMgr()->getWorkspaceRuleFor(WIN->layoutTarget()->workspace()).value_or(Config::CWorkspaceRule{});
@@ -145,13 +140,9 @@ void hkMouse(CInputManager* thisptr, uint32_t time, bool refocus, bool mouse, st
         GAPBOX.expand(BORDER);
         if (GAPBOX.containsPoint(COORDS) &&
             ((LEFT && COORDS.x <= BOX.x) || (RIGHT && COORDS.x >= BOX.x + BOX.w) || (TOP && COORDS.y <= BOX.y) || (BOTTOM && COORDS.y >= BOX.y + BOX.h))) {
-            Pointer::mgr()->warpTo(BOX.expand(PAD).closestPoint(COORDS));
-            (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
-            Pointer::mgr()->warpTo(COORDS);
-            return;
+            pos = BOX.expand(PAD).closestPoint(COORDS);
         }
     }
-    (*(origMotion)g_pMouseHook->m_original)(thisptr, time, refocus, mouse, overridePos);
 }
 
 APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
@@ -170,31 +161,17 @@ APICALL EXPORT PLUGIN_DESCRIPTION_INFO PLUGIN_INIT(HANDLE handle) {
     HyprlandAPI::addConfigValueV2(PHANDLE, makeShared<Config::Values::CStringValue>("plugin:magnet:edge", "edge", "t"));
     HyprlandAPI::addConfigValueV2(PHANDLE, makeShared<Config::Values::CStringValue>("plugin:magnet:warp", "warp", ""));
 
-    auto FNS = HyprlandAPI::findFunctionsByName(PHANDLE, "mouseMoveUnified");
-    for (auto& fn : FNS) {
-        if (!fn.demangled.contains("CInputManager"))
-            continue;
-
-        g_pMouseHook = HyprlandAPI::createFunctionHook(PHANDLE, fn.address, (void*)::hkMouse);
-        break;
-    }
-
-    bool success = g_pMouseHook;
-    if (!success) {
-        HyprlandAPI::addNotification(PHANDLE, "[hyprmagnet] Hook init failed", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
-        throw std::runtime_error("[hyprmagnet] Hook init failed");
-    }
-
-    success = success && g_pMouseHook->hook();
-
-    if (!success) {
-        HyprlandAPI::addNotification(PHANDLE, "[hyprmagnet] Hook failed", CHyprColor{1.0, 0.2, 0.2, 1.0}, 5000);
-        throw std::runtime_error("[hyprmagnet] Hook failed");
-    }
+    g_pointerTransformer = makeShared<Pointer::CPointerTransformer>([](Vector2D pos) -> Vector2D {
+        transformPointer(pos);
+        return pos;
+    });
+    Pointer::mgr()->addTransformer(g_pointerTransformer);
 
     return {"hyprmagnet", "Move mouse events from gaps to nearby windows and warp between monitors", "Dregu", "0.55.0"};
 }
 
 APICALL EXPORT void PLUGIN_EXIT() {
-    ;
+    if (g_pointerTransformer)
+        Pointer::mgr()->removeTransformer(g_pointerTransformer);
+    g_pointerTransformer.reset();
 }
